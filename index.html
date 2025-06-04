@@ -1,101 +1,186 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>角度と距離計測アプリ</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <meta charset="utf-8">
+  <title>三点角度測定アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    #map {
-      height: 70vh;
+    #map { height: 500px; width: 100%; margin-bottom: 1em; }
+    .controls { margin-bottom: 10px; }
+    .angle-label {
+      background-color: white;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-size: 12px;
     }
-    body {
-      margin: 0;
-      font-family: sans-serif;
-    }
-    .result {
-      padding: 1rem;
-      background: #fff;
-      font-size: 1.2rem;
-    }
-    .highlight {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #0066cc;
+    #results {
+      font-size: 18px;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
+  <h2>三点角度測定アプリ</h2>
+
+  <div class="controls">
+    <h3>上マーク（A）</h3>
+    <button onclick="useCurrentLocation('A')">📍現在地で登録</button><br>
+    緯度: <input type="number" id="lat-A" step="any">
+    経度: <input type="number" id="lng-A" step="any">
+    <button onclick="useManualInput('A')">手動で登録</button>
+  </div>
+
+  <div class="controls">
+    <h3>サイドマーク（B）</h3>
+    <button onclick="useCurrentLocation('B')">📍現在地で登録</button><br>
+    緯度: <input type="number" id="lat-B" step="any">
+    経度: <input type="number" id="lng-B" step="any">
+    <button onclick="useManualInput('B')">手動で登録</button>
+  </div>
+
+  <div class="controls">
+    <h3>下マーク（C）</h3>
+    <button onclick="useCurrentLocation('C')">📍現在地で登録</button><br>
+    緯度: <input type="number" id="lat-C" step="any">
+    経度: <input type="number" id="lng-C" step="any">
+    <button onclick="useManualInput('C')">手動で登録</button>
+  </div>
+
   <div id="map"></div>
-  <div class="result" id="info">地図をタップして、3点を選択してください</div>
+  <div id="results"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map").setView([35.681236, 139.767125], 13); // 東京駅付近
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-    }).addTo(map);
+    let map;
+    const markers = {};
+    const labels = {};
+    let triangleLine;
 
-    const points = [];
-    const labels = ["上マーク", "サイドマーク", "下マーク"];
-    const infoDiv = document.getElementById("info");
-
-    function toRad(deg) {
-      return (deg * Math.PI) / 180;
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 35.681, lng: 139.767 },
+        zoom: 10,
+      });
     }
 
-    function toDeg(rad) {
-      return (rad * 180) / Math.PI;
+    function useCurrentLocation(mark) {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setMarker(mark, lat, lng);
+        }, () => alert("位置情報の取得に失敗しました"));
+      } else {
+        alert("この端末では位置情報が使えません");
+      }
     }
 
-    function haversine(p1, p2) {
-      const R = 6371e3;
-      const φ1 = toRad(p1.lat), φ2 = toRad(p2.lat);
-      const Δφ = toRad(p2.lat - p1.lat);
-      const Δλ = toRad(p2.lng - p1.lng);
-      const a =
-        Math.sin(Δφ / 2) ** 2 +
-        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
+    function useManualInput(mark) {
+      const lat = parseFloat(document.getElementById(`lat-${mark}`).value);
+      const lng = parseFloat(document.getElementById(`lng-${mark}`).value);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        setMarker(mark, lat, lng);
+      } else {
+        alert("緯度・経度を正しく入力してください");
+      }
     }
 
-    function bearing(from, to) {
-      const φ1 = toRad(from.lat);
-      const φ2 = toRad(to.lat);
-      const λ1 = toRad(from.lng);
-      const λ2 = toRad(to.lng);
-      const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
-      const x =
-        Math.cos(φ1) * Math.sin(φ2) -
-        Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+    function setMarker(mark, lat, lng) {
+      if (markers[mark]) {
+        markers[mark].setMap(null);
+      }
+      markers[mark] = new google.maps.Marker({
+        position: { lat, lng },
+        map,
+        label: mark,
+      });
+      map.panTo({ lat, lng });
+      updateTriangleAndAngles();
+    }
+
+    function updateTriangleAndAngles() {
+      const A = markers['A']?.getPosition();
+      const B = markers['B']?.getPosition();
+      const C = markers['C']?.getPosition();
+      if (!(A && B && C)) return;
+
+      // 清掃
+      for (const key in labels) {
+        labels[key].setMap(null);
+      }
+      labels.length = 0;
+      if (triangleLine) triangleLine.setMap(null);
+
+      const a = haversineDistance(B, C);
+      const b = haversineDistance(A, C);
+      const c = haversineDistance(A, B);
+
+      const angleA = getAngle(b, c, a);
+      const angleB = getAngle(a, c, b);
+      const angleC = 180 - angleA - angleB;
+
+      labels['A'] = addLabel(A, `${angleA.toFixed(1)}°`);
+      labels['B'] = addLabel(B, `${angleB.toFixed(1)}°`);
+      labels['C'] = addLabel(C, `${angleC.toFixed(1)}°`);
+
+      triangleLine = new google.maps.Polyline({
+        path: [A, B, C, A],
+        geodesic: true,
+        strokeColor: "#00BFFF",
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        map
+      });
+
+      const acDist = haversineDistance(A, C);
+      const bearing = computeBearing(A, C);
+
+      document.getElementById("results").innerHTML =
+        `<strong>A（上マーク）↔C（下マーク）</strong><br>
+        距離: ${acDist.toFixed(1)} m<br>
+        方位角: ${bearing.toFixed(1)}°`;
+    }
+
+    function haversineDistance(pos1, pos2) {
+      const R = 6371000;
+      const toRad = x => x * Math.PI / 180;
+      const dLat = toRad(pos2.lat() - pos1.lat());
+      const dLng = toRad(pos2.lng() - pos1.lng());
+      const lat1 = toRad(pos1.lat());
+      const lat2 = toRad(pos2.lat());
+
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function computeBearing(from, to) {
+      const toRad = deg => deg * Math.PI / 180;
+      const toDeg = rad => rad * 180 / Math.PI;
+      const lat1 = toRad(from.lat());
+      const lat2 = toRad(to.lat());
+      const dLng = toRad(to.lng() - from.lng());
+      const y = Math.sin(dLng) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) -
+                Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
       return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
 
-    map.on("click", (e) => {
-      if (points.length >= 3) return;
+    function getAngle(sideA, sideB, sideC) {
+      // cos(∠C) = (a² + b² - c²) / (2ab)
+      return Math.acos((sideA ** 2 + sideB ** 2 - sideC ** 2) / (2 * sideA * sideB)) * 180 / Math.PI;
+    }
 
-      const point = { lat: e.latlng.lat, lng: e.latlng.lng };
-      points.push(point);
-      L.marker(point, { title: labels[points.length - 1] })
-        .bindPopup(labels[points.length - 1])
-        .addTo(map)
-        .openPopup();
+    function addLabel(position, text) {
+      return new google.maps.InfoWindow({
+        content: `<div class="angle-label">${text}</div>`,
+        position,
+        pixelOffset: new google.maps.Size(15, -30),
+      }).open(map);
+    }
+  </script>
 
-      if (points.length === 3) {
-        const AC = haversine(points[0], points[2]);
-        const angle = bearing(points[0], points[2]);
-        infoDiv.innerHTML = `
-          <div>📍3点登録が完了しました</div>
-          <div class="highlight">上マーク → 下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
-          <div class="highlight">方位角（地球基準）: ${angle.toFixed(2)}°</div>
-          <button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;background:red;color:white;border:none;border-radius:8px;">リセット</button>
-        `;
-      }
-    });
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap">
   </script>
 </body>
 </html>
