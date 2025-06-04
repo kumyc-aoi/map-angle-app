@@ -39,6 +39,22 @@
       border: none;
       border-radius: 5px;
     }
+    .angle-label {
+      font-weight: bold;
+      color: black;
+      background: transparent;
+      border: none;
+      font-size: 0.9rem;
+      padding: 2px;
+    }
+    .name-label {
+      background: white;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 0.8rem;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -80,9 +96,10 @@
     const labels = ["上マーク", "サイドマーク", "下マーク"];
     const points = [null, null, null];
     const markers = [null, null, null];
-    const angles = [];
+    const nameLabels = [null, null, null];
+    const angleLabels = [];
     const info = document.getElementById("info");
-    let polyline = null;
+    let triangleLines = null;
 
     inputs.forEach((input, index) => {
       input.addEventListener("keydown", (e) => {
@@ -99,10 +116,10 @@
     });
 
     function resetInput(index) {
-      if (markers[index]) {
-        map.removeLayer(markers[index]);
-        markers[index] = null;
-      }
+      if (markers[index]) map.removeLayer(markers[index]);
+      if (nameLabels[index]) map.removeLayer(nameLabels[index]);
+      markers[index] = null;
+      nameLabels[index] = null;
       points[index] = null;
       inputs[index].value = "";
       clearResult();
@@ -138,47 +155,79 @@
       return toDeg(Math.acos((b*b + c*c - a*a)/(2*b*c)));
     }
 
+    function midPoint(p1, p2, p3) {
+      return {
+        lat: (p1.lat + p2.lat + p3.lat) / 3,
+        lng: (p1.lng + p2.lng + p3.lng) / 3
+      };
+    }
+
     function addPoint(index, latlng) {
       points[index] = latlng;
-      if (markers[index]) {
-        map.removeLayer(markers[index]);
-      }
-      markers[index] = L.marker(latlng).addTo(map).bindPopup(labels[index]).openPopup();
 
-      // 再描画
+      if (markers[index]) map.removeLayer(markers[index]);
+      markers[index] = L.marker(latlng).addTo(map);
+
+      if (nameLabels[index]) map.removeLayer(nameLabels[index]);
+      nameLabels[index] = L.marker(latlng, {
+        icon: L.divIcon({
+          className: 'name-label',
+          html: labels[index],
+          iconAnchor: [-5, 20]
+        }),
+        interactive: false
+      }).addTo(map);
+
       clearResult();
       const allSet = points.every(p => p !== null);
       if (allSet) {
-        const angleA = angleBetween(points[1], points[0], points[2]);
-        const angleB = angleBetween(points[0], points[1], points[2]);
+        const [A, B, C] = points;
+
+        const angleA = angleBetween(B, A, C);
+        const angleB = angleBetween(A, B, C);
         const angleC = 180 - angleA - angleB;
 
-        const AC = haversine(points[0], points[2]);
-        const angleAC = bearing(points[0], points[2]);
+        const AC = haversine(A, C);
+        const angleAC = bearing(A, C);
 
         info.innerHTML = `
           <div class="highlight">上マーク→下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
           <div class="highlight">地球方位角: ${angleAC.toFixed(2)}°</div>
         `;
 
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[0]).setContent(`∠${angleA.toFixed(1)}°`).addTo(map));
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[1]).setContent(`∠${angleB.toFixed(1)}°`).addTo(map));
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[2]).setContent(`∠${angleC.toFixed(1)}°`).addTo(map));
+        // 内側に角度表示（座標を少しずらす）
+        const offset = 0.0003;
+        const angleData = [
+          { pt: A, val: angleA },
+          { pt: B, val: angleB },
+          { pt: C, val: angleC }
+        ];
+        angleData.forEach(({ pt, val }) => {
+          const label = L.marker(
+            { lat: pt.lat + offset, lng: pt.lng + offset },
+            {
+              icon: L.divIcon({
+                className: 'angle-label',
+                html: `∠${val.toFixed(1)}°`
+              }),
+              interactive: false
+            }
+          ).addTo(map);
+          angleLabels.push(label);
+        });
 
-        if (polyline) map.removeLayer(polyline);
-        polyline = L.polyline(points, { color: "blue" }).addTo(map);
+        // 三角形を線で結ぶ
+        if (triangleLines) map.removeLayer(triangleLines);
+        triangleLines = L.polyline([A, B, C, A], { color: 'blue' }).addTo(map);
       }
     }
 
     function clearResult() {
-      angles.forEach(t => map.removeLayer(t));
-      angles.length = 0;
-      if (polyline) {
-        map.removeLayer(polyline);
-        polyline = null;
+      angleLabels.forEach(t => map.removeLayer(t));
+      angleLabels.length = 0;
+      if (triangleLines) {
+        map.removeLayer(triangleLines);
+        triangleLines = null;
       }
       const allSet = points.every(p => p !== null);
       if (!allSet) {
@@ -189,11 +238,13 @@
     function resetApp() {
       points.fill(null);
       markers.forEach(m => { if (m) map.removeLayer(m); });
+      nameLabels.forEach(l => { if (l) map.removeLayer(l); });
       markers.fill(null);
-      angles.forEach(t => map.removeLayer(t));
-      angles.length = 0;
-      if (polyline) map.removeLayer(polyline);
-      polyline = null;
+      nameLabels.fill(null);
+      angleLabels.forEach(t => map.removeLayer(t));
+      angleLabels.length = 0;
+      if (triangleLines) map.removeLayer(triangleLines);
+      triangleLines = null;
       inputs.forEach(i => i.value = "");
       map.setView(resetCenter, 15);
       info.innerHTML = "各マークの緯度・経度を入力してください。";
