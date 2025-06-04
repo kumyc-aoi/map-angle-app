@@ -1,129 +1,146 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8" />
   <title>マーク設置用アプリ</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { font-family: sans-serif; text-align: center; margin: 20px; }
-    textarea { width: 90%; height: 2.5em; font-size: 16px; margin-bottom: 10px; }
-    button { font-size: 16px; margin: 5px; padding: 5px 10px; }
-    #results { margin-top: 20px; font-size: 18px; }
+    #map { height: 65vh; }
+    body { margin: 0; font-family: sans-serif; }
+    .panel {
+      padding: 1rem;
+      background: #fff;
+    }
+    .highlight {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: #0066cc;
+    }
+    input[type="text"] {
+      width: 100%;
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 10px 20px;
+      font-size: 1rem;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
-
-  <h2>マーク設置用アプリ</h2>
-
-  <p>Googleマップなどから取得した緯度経度（例: <code>(34.7615747, 135.5314288)</code>）を各地点に貼り付けてください。</p>
-
-  <div>
-    <h3>上マーク（A）</h3>
-    <textarea id="inputA" placeholder="(緯度, 経度)"></textarea>
-    <br><button onclick="setPoint('A')">登録</button>
+  <div id="map"></div>
+  <div class="panel">
+    <div><strong>緯度経度入力（例: 34.7615747, 135.5314288）</strong></div>
+    <input type="text" id="latlngInput" placeholder="緯度, 経度 を貼り付けてEnter">
+    <div id="info">上・サイド・下マークの順に最大3点登録できます。</div>
+    <button onclick="resetApp()">リセット</button>
   </div>
 
-  <div>
-    <h3>サイドマーク（B）</h3>
-    <textarea id="inputB" placeholder="(緯度, 経度)"></textarea>
-    <br><button onclick="setPoint('B')">登録</button>
-  </div>
-
-  <div>
-    <h3>下マーク（C）</h3>
-    <textarea id="inputC" placeholder="(緯度, 経度)"></textarea>
-    <br><button onclick="setPoint('C')">登録</button>
-  </div>
-
-  <button onclick="reset()">リセット</button>
-
-  <div id="results"></div>
-
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const points = { A: null, B: null, C: null };
+    const map = L.map("map").setView([35.240537, 135.994972], 15); // 坂本城跡公園
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(map);
 
-    function parseLatLng(text) {
-      const match = text.match(/([-+]?[0-9]*\.?[0-9]+)[^\d\-+]*([-+]?[0-9]*\.?[0-9]+)/);
-      if (!match) return null;
-      return { lat: parseFloat(match[1]), lng: parseFloat(match[2]) };
-    }
+    const points = [];
+    const labels = ["上マーク", "サイドマーク", "下マーク"];
+    const markers = [];
+    const angles = [];
+    const info = document.getElementById("info");
 
-    function setPoint(label) {
-      const input = document.getElementById("input" + label).value;
-      const coords = parseLatLng(input);
-      if (!coords) {
-        alert("緯度経度が正しく読み取れませんでした");
-        return;
+    const input = document.getElementById("latlngInput");
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const val = input.value.trim();
+        const [lat, lng] = val.split(",").map(Number);
+        if (isNaN(lat) || isNaN(lng)) {
+          alert("正しい緯度, 経度を入力してください");
+          return;
+        }
+        addPoint({ lat, lng });
+        input.value = "";
       }
-      points[label] = coords;
-      updateResults();
+    });
+
+    function toRad(deg) { return deg * Math.PI / 180; }
+    function toDeg(rad) { return rad * 180 / Math.PI; }
+
+    function haversine(p1, p2) {
+      const R = 6371e3;
+      const φ1 = toRad(p1.lat), φ2 = toRad(p2.lat);
+      const Δφ = toRad(p2.lat - p1.lat);
+      const Δλ = toRad(p2.lng - p1.lng);
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
     }
 
-    function reset() {
-      document.getElementById("inputA").value = "";
-      document.getElementById("inputB").value = "";
-      document.getElementById("inputC").value = "";
-      points.A = points.B = points.C = null;
-      document.getElementById("results").innerHTML = `坂本城跡公園（35.1615, 135.9441）にリセットしました。`;
+    function bearing(from, to) {
+      const φ1 = toRad(from.lat);
+      const φ2 = toRad(to.lat);
+      const Δλ = toRad(to.lng - from.lng);
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) -
+                Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
 
-    function updateResults() {
-      const A = points.A, B = points.B, C = points.C;
-      if (!(A && B && C)) {
-        document.getElementById("results").innerHTML = "3点すべてを入力してください";
-        return;
+    function angleBetween(p1, p2, p3) {
+      const a = haversine(p2, p3);
+      const b = haversine(p1, p3);
+      const c = haversine(p1, p2);
+      return toDeg(Math.acos((b*b + c*c - a*a)/(2*b*c)));
+    }
+
+    function addPoint(latlng) {
+      if (points.length >= 3) return;
+      points.push(latlng);
+
+      const label = labels[points.length - 1];
+      const marker = L.marker(latlng).addTo(map).bindPopup(label).openPopup();
+      markers.push(marker);
+
+      if (points.length === 3) {
+        const angleA = angleBetween(points[1], points[0], points[2]);
+        const angleB = angleBetween(points[0], points[1], points[2]);
+        const angleC = 180 - angleA - angleB;
+
+        const AC = haversine(points[0], points[2]);
+        const angleAC = bearing(points[0], points[2]);
+
+        info.innerHTML = `
+          <div class="highlight">上マーク→下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
+          <div class="highlight">地球方位角: ${angleAC.toFixed(2)}°</div>
+        `;
+
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[0]).setContent(`∠: ${angleA.toFixed(1)}°`).addTo(map));
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[1]).setContent(`∠: ${angleB.toFixed(1)}°`).addTo(map));
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[2]).setContent(`∠: ${angleC.toFixed(1)}°`).addTo(map));
+
+        L.polyline(points, { color: "blue" }).addTo(map);
       }
-
-      const dist = (p1, p2) => {
-        const R = 6371000;
-        const dLat = toRad(p2.lat - p1.lat);
-        const dLng = toRad(p2.lng - p1.lng);
-        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLng/2)**2;
-        return 2 * R * Math.asin(Math.sqrt(a));
-      };
-
-      const angle = (a, b, c) =>
-        Math.acos((b**2 + c**2 - a**2) / (2 * b * c)) * 180 / Math.PI;
-
-      const a = dist(B, C);
-      const b = dist(A, C);
-      const c = dist(A, B);
-
-      const angleA = angle(a, b, c);
-      const angleB = angle(b, c, a);
-      const angleC = 180 - angleA - angleB;
-
-      const bearing = computeBearing(A, C);
-
-      document.getElementById("results").innerHTML = `
-        <b>上マーク（A）</b>: (${A.lat.toFixed(6)}, ${A.lng.toFixed(6)})<br>
-        <b>サイドマーク（B）</b>: (${B.lat.toFixed(6)}, ${B.lng.toFixed(6)})<br>
-        <b>下マーク（C）</b>: (${C.lat.toFixed(6)}, ${C.lng.toFixed(6)})<br><br>
-
-        <b>三角形の内角</b><br>
-        ∠A: ${angleA.toFixed(1)}°<br>
-        ∠B: ${angleB.toFixed(1)}°<br>
-        ∠C: ${angleC.toFixed(1)}°<br><br>
-
-        <b>AC間の距離</b>: ${b.toFixed(1)} m<br>
-        <b>ACの方位角</b>: ${bearing.toFixed(1)}°
-      `;
     }
 
-    function toRad(deg) {
-      return deg * Math.PI / 180;
-    }
-
-    function computeBearing(from, to) {
-      const lat1 = toRad(from.lat);
-      const lat2 = toRad(to.lat);
-      const dLng = toRad(to.lng - from.lng);
-      const y = Math.sin(dLng) * Math.cos(lat2);
-      const x = Math.cos(lat1) * Math.sin(lat2) -
-                Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    function resetApp() {
+      points.length = 0;
+      markers.forEach(m => map.removeLayer(m));
+      angles.forEach(t => map.removeLayer(t));
+      markers.length = 0;
+      angles.length = 0;
+      map.setView([35.240537, 135.994972], 15);
+      info.innerHTML = "上・サイド・下マークの順に最大3点登録できます。";
     }
   </script>
-
 </body>
 </html>
