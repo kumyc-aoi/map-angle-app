@@ -141,4 +141,63 @@
     function addPoint(index, latlng) {
       points[index] = latlng;
       if (markers[index]) {
-        map.remove
+        map.removeLayer(markers[index]);
+      }
+      markers[index] = L.marker(latlng).addTo(map).bindPopup(labels[index]).openPopup();
+
+      // 再描画
+      clearResult();
+      const allSet = points.every(p => p !== null);
+      if (allSet) {
+        const angleA = angleBetween(points[1], points[0], points[2]);
+        const angleB = angleBetween(points[0], points[1], points[2]);
+        const angleC = 180 - angleA - angleB;
+
+        const AC = haversine(points[0], points[2]);
+        const angleAC = bearing(points[0], points[2]);
+
+        info.innerHTML = `
+          <div class="highlight">上マーク→下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
+          <div class="highlight">地球方位角: ${angleAC.toFixed(2)}°</div>
+        `;
+
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[0]).setContent(`∠${angleA.toFixed(1)}°`).addTo(map));
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[1]).setContent(`∠${angleB.toFixed(1)}°`).addTo(map));
+        angles.push(L.tooltip({ permanent: true, direction: 'top' })
+          .setLatLng(points[2]).setContent(`∠${angleC.toFixed(1)}°`).addTo(map));
+
+        if (polyline) map.removeLayer(polyline);
+        polyline = L.polyline(points, { color: "blue" }).addTo(map);
+      }
+    }
+
+    function clearResult() {
+      angles.forEach(t => map.removeLayer(t));
+      angles.length = 0;
+      if (polyline) {
+        map.removeLayer(polyline);
+        polyline = null;
+      }
+      const allSet = points.every(p => p !== null);
+      if (!allSet) {
+        info.innerHTML = "各マークの緯度・経度を入力してください。";
+      }
+    }
+
+    function resetApp() {
+      points.fill(null);
+      markers.forEach(m => { if (m) map.removeLayer(m); });
+      markers.fill(null);
+      angles.forEach(t => map.removeLayer(t));
+      angles.length = 0;
+      if (polyline) map.removeLayer(polyline);
+      polyline = null;
+      inputs.forEach(i => i.value = "");
+      map.setView(resetCenter, 15);
+      info.innerHTML = "各マークの緯度・経度を入力してください。";
+    }
+  </script>
+</body>
+</html>
