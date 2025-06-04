@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>マーク設置用アプリ</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 55vh; }
@@ -62,17 +62,17 @@
   <div class="panel">
     <div class="coord-group">
       <strong>A（上マーク）:</strong>
-      <input type="text" id="inputA" placeholder="緯度, 経度">
+      <input type="text" id="inputA" placeholder="緯度, 経度" onfocus="scrollIntoViewIfNeeded(this)">
       <button onclick="resetInput(0)">リセット</button>
     </div>
     <div class="coord-group">
       <strong>B（サイドマーク）:</strong>
-      <input type="text" id="inputB" placeholder="緯度, 経度">
+      <input type="text" id="inputB" placeholder="緯度, 経度" onfocus="scrollIntoViewIfNeeded(this)">
       <button onclick="resetInput(1)">リセット</button>
     </div>
     <div class="coord-group">
       <strong>C（下マーク）:</strong>
-      <input type="text" id="inputC" placeholder="緯度, 経度">
+      <input type="text" id="inputC" placeholder="緯度, 経度" onfocus="scrollIntoViewIfNeeded(this)">
       <button onclick="resetInput(2)">リセット</button>
     </div>
     <div id="info">各マークの緯度・経度を入力してください。</div>
@@ -115,6 +115,12 @@
       });
     });
 
+    function scrollIntoViewIfNeeded(elem) {
+      setTimeout(() => {
+        elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+
     function resetInput(index) {
       if (markers[index]) map.removeLayer(markers[index]);
       if (nameLabels[index]) map.removeLayer(nameLabels[index]);
@@ -155,13 +161,6 @@
       return toDeg(Math.acos((b*b + c*c - a*a)/(2*b*c)));
     }
 
-    function midPoint(p1, p2, p3) {
-      return {
-        lat: (p1.lat + p2.lat + p3.lat) / 3,
-        lng: (p1.lng + p2.lng + p3.lng) / 3
-      };
-    }
-
     function addPoint(index, latlng) {
       points[index] = latlng;
 
@@ -187,15 +186,15 @@
         const angleB = angleBetween(A, B, C);
         const angleC = 180 - angleA - angleB;
 
-        const AC = haversine(A, C);
-        const angleAC = bearing(A, C);
+        const AC = haversine(C, A);
+        const angleCA = bearing(C, A);  // 下マークから見た上マークの方位角
 
         info.innerHTML = `
-          <div class="highlight">上マーク→下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
-          <div class="highlight">地球方位角: ${angleAC.toFixed(2)}°</div>
+          <div class="highlight">下マーク→上マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
+          <div class="highlight">地球方位角: ${angleCA.toFixed(2)}°</div>
         `;
 
-        // 内側に角度表示（座標を少しずらす）
+        // 内側に角度表示
         const offset = 0.0003;
         const angleData = [
           { pt: A, val: angleA },
@@ -216,9 +215,9 @@
           angleLabels.push(label);
         });
 
-        // 三角形を線で結ぶ
+        // 三角形のすべての辺を線で結ぶ
         if (triangleLines) map.removeLayer(triangleLines);
-        triangleLines = L.polyline([A, B, C, A], { color: 'blue' }).addTo(map);
+        triangleLines = L.polyline([A, B, C, A, C], { color: 'blue' }).addTo(map);
       }
     }
 
