@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>角度と距離計測アプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <style>
+    #map {
+      height: 70vh;
+    }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+    }
+    .result {
+      padding: 1rem;
+      background: #fff;
+      font-size: 1.2rem;
+    }
+    .highlight {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #0066cc;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="result" id="info">地図をタップして、3点を選択してください</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([35.681236, 139.767125], 13); // 東京駅付近
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors",
+    }).addTo(map);
+
+    const points = [];
+    const labels = ["上マーク", "サイドマーク", "下マーク"];
+    const infoDiv = document.getElementById("info");
+
+    function toRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    function toDeg(rad) {
+      return (rad * 180) / Math.PI;
+    }
+
+    function haversine(p1, p2) {
+      const R = 6371e3;
+      const φ1 = toRad(p1.lat), φ2 = toRad(p2.lat);
+      const Δφ = toRad(p2.lat - p1.lat);
+      const Δλ = toRad(p2.lng - p1.lng);
+      const a =
+        Math.sin(Δφ / 2) ** 2 +
+        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function bearing(from, to) {
+      const φ1 = toRad(from.lat);
+      const φ2 = toRad(to.lat);
+      const λ1 = toRad(from.lng);
+      const λ2 = toRad(to.lng);
+      const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+      const x =
+        Math.cos(φ1) * Math.sin(φ2) -
+        Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    map.on("click", (e) => {
+      if (points.length >= 3) return;
+
+      const point = { lat: e.latlng.lat, lng: e.latlng.lng };
+      points.push(point);
+      L.marker(point, { title: labels[points.length - 1] })
+        .bindPopup(labels[points.length - 1])
+        .addTo(map)
+        .openPopup();
+
+      if (points.length === 3) {
+        const AC = haversine(points[0], points[2]);
+        const angle = bearing(points[0], points[2]);
+        infoDiv.innerHTML = `
+          <div>📍3点登録が完了しました</div>
+          <div class="highlight">上マーク → 下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
+          <div class="highlight">方位角（地球基準）: ${angle.toFixed(2)}°</div>
+          <button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;background:red;color:white;border:none;border-radius:8px;">リセット</button>
+        `;
+      }
+    });
+  </script>
+</body>
+</html>
