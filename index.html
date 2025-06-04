@@ -6,24 +6,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    #map { height: 65vh; }
+    #map { height: 55vh; }
     body { margin: 0; font-family: sans-serif; }
     .panel {
       padding: 1rem;
       background: #fff;
     }
     .highlight {
-      font-size: 1.3rem;
+      font-size: 1.2rem;
       font-weight: bold;
       color: #0066cc;
     }
+    .coord-group {
+      margin-bottom: 0.5rem;
+    }
     input[type="text"] {
-      width: 100%;
-      margin-top: 0.5rem;
+      width: 70%;
       padding: 0.5rem;
       font-size: 1rem;
     }
     button {
+      padding: 5px 10px;
+      font-size: 0.9rem;
+      margin-left: 5px;
+    }
+    #mainReset {
       margin-top: 1rem;
       padding: 10px 20px;
       font-size: 1rem;
@@ -37,38 +44,69 @@
 <body>
   <div id="map"></div>
   <div class="panel">
-    <div><strong>緯度経度入力（例: 34.7615747, 135.5314288）</strong></div>
-    <input type="text" id="latlngInput" placeholder="緯度, 経度 を貼り付けてEnter">
-    <div id="info">上・サイド・下マークの順に最大3点登録できます。</div>
-    <button onclick="resetApp()">リセット</button>
+    <div class="coord-group">
+      <strong>A（上マーク）:</strong>
+      <input type="text" id="inputA" placeholder="緯度, 経度">
+      <button onclick="resetInput(0)">リセット</button>
+    </div>
+    <div class="coord-group">
+      <strong>B（サイドマーク）:</strong>
+      <input type="text" id="inputB" placeholder="緯度, 経度">
+      <button onclick="resetInput(1)">リセット</button>
+    </div>
+    <div class="coord-group">
+      <strong>C（下マーク）:</strong>
+      <input type="text" id="inputC" placeholder="緯度, 経度">
+      <button onclick="resetInput(2)">リセット</button>
+    </div>
+    <div id="info">各マークの緯度・経度を入力してください。</div>
+    <button id="mainReset" onclick="resetApp()">全体リセット</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map").setView([35.240537, 135.994972], 15); // 坂本城跡公園
+    const initialCenter = [35.240537, 135.994972];
+    const resetCenter = [35.0582072, 135.8801857];
+    const map = L.map("map").setView(initialCenter, 15);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors"
     }).addTo(map);
 
-    const points = [];
+    const inputs = [
+      document.getElementById("inputA"),
+      document.getElementById("inputB"),
+      document.getElementById("inputC")
+    ];
     const labels = ["上マーク", "サイドマーク", "下マーク"];
-    const markers = [];
+    const points = [null, null, null];
+    const markers = [null, null, null];
     const angles = [];
     const info = document.getElementById("info");
+    let polyline = null;
 
-    const input = document.getElementById("latlngInput");
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const val = input.value.trim();
-        const [lat, lng] = val.split(",").map(Number);
-        if (isNaN(lat) || isNaN(lng)) {
-          alert("正しい緯度, 経度を入力してください");
-          return;
+    inputs.forEach((input, index) => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const val = input.value.trim();
+          const [lat, lng] = val.split(",").map(Number);
+          if (isNaN(lat) || isNaN(lng)) {
+            alert("正しい緯度, 経度を入力してください");
+            return;
+          }
+          addPoint(index, { lat, lng });
         }
-        addPoint({ lat, lng });
-        input.value = "";
-      }
+      });
     });
+
+    function resetInput(index) {
+      if (markers[index]) {
+        map.removeLayer(markers[index]);
+        markers[index] = null;
+      }
+      points[index] = null;
+      inputs[index].value = "";
+      clearResult();
+    }
 
     function toRad(deg) { return deg * Math.PI / 180; }
     function toDeg(rad) { return rad * 180 / Math.PI; }
@@ -100,47 +138,7 @@
       return toDeg(Math.acos((b*b + c*c - a*a)/(2*b*c)));
     }
 
-    function addPoint(latlng) {
-      if (points.length >= 3) return;
-      points.push(latlng);
-
-      const label = labels[points.length - 1];
-      const marker = L.marker(latlng).addTo(map).bindPopup(label).openPopup();
-      markers.push(marker);
-
-      if (points.length === 3) {
-        const angleA = angleBetween(points[1], points[0], points[2]);
-        const angleB = angleBetween(points[0], points[1], points[2]);
-        const angleC = 180 - angleA - angleB;
-
-        const AC = haversine(points[0], points[2]);
-        const angleAC = bearing(points[0], points[2]);
-
-        info.innerHTML = `
-          <div class="highlight">上マーク→下マーク 距離: ${(AC / 1000).toFixed(2)} km</div>
-          <div class="highlight">地球方位角: ${angleAC.toFixed(2)}°</div>
-        `;
-
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[0]).setContent(`∠: ${angleA.toFixed(1)}°`).addTo(map));
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[1]).setContent(`∠: ${angleB.toFixed(1)}°`).addTo(map));
-        angles.push(L.tooltip({ permanent: true, direction: 'top' })
-          .setLatLng(points[2]).setContent(`∠: ${angleC.toFixed(1)}°`).addTo(map));
-
-        L.polyline(points, { color: "blue" }).addTo(map);
-      }
-    }
-
-    function resetApp() {
-      points.length = 0;
-      markers.forEach(m => map.removeLayer(m));
-      angles.forEach(t => map.removeLayer(t));
-      markers.length = 0;
-      angles.length = 0;
-      map.setView([35.240537, 135.994972], 15);
-      info.innerHTML = "上・サイド・下マークの順に最大3点登録できます。";
-    }
-  </script>
-</body>
-</html>
+    function addPoint(index, latlng) {
+      points[index] = latlng;
+      if (markers[index]) {
+        map.remove
