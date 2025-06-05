@@ -16,7 +16,7 @@
       background-color: #004466;
       color: white;
       padding: 10px;
-      font-size: 1.2rem;
+      font-size: 1.4rem;
       text-align: center;
       position: sticky;
       top: 0;
@@ -24,9 +24,11 @@
     }
 
     #summary {
-      font-size: 0.9rem;
-      padding-top: 5px;
+      font-size: 1rem;
+      font-weight: bold;
+      margin-top: 6px;
       line-height: 1.6;
+      color: #e0f7fa;
     }
 
     #map {
@@ -67,14 +69,12 @@
     }
 
     .label-text {
-      background: white;
-      padding: 3px 6px;
-      border-radius: 4px;
       font-size: 0.8rem;
       text-align: center;
       transform: translate(-50%, -50%);
       pointer-events: none;
       white-space: nowrap;
+      background: transparent;
     }
   </style>
 </head>
@@ -170,9 +170,9 @@
 
       const A = points[0], B = points[1], C = points[2];
 
-      if (A && B) lines.push(L.polyline([A, B], { color: 'gray' }).addTo(map));
-      if (B && C) lines.push(L.polyline([B, C], { color: 'gray' }).addTo(map));
-      if (C && A) lines.push(L.polyline([C, A], { color: 'blue' }).addTo(map));
+      if (A && B) lines.push(L.polyline([A, B], { color: 'rgba(0,0,255,0.5)' }).addTo(map));
+      if (B && C) lines.push(L.polyline([B, C], { color: 'rgba(0,0,255,0.5)' }).addTo(map));
+      if (C && A) lines.push(L.polyline([C, A], { color: 'rgba(0,0,255,0.5)' }).addTo(map));
 
       const summary = document.getElementById("summary");
       summary.innerHTML = "";
@@ -180,7 +180,7 @@
       if (A && C) {
         const d = haversine(A, C) / 1000;
         const angle = bearing(C, A);
-        summary.innerHTML = `上 → 下<br>距離: ${d.toFixed(2)} km　方位角: ${angle.toFixed(2)}°`;
+        summary.innerHTML = `上 → 下<br>距離：<strong>${d.toFixed(2)} km</strong>　方位角：<strong>${angle.toFixed(2)}°</strong>`;
       }
 
       if (A && B && C) {
