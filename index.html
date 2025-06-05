@@ -2,108 +2,121 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>マーク設置用アプリ</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     body {
       margin: 0;
       font-family: 'Helvetica Neue', sans-serif;
-      background: #f0f4f8;
+      background-color: #f8f9fa;
     }
+
     header {
-      background: #003366;
+      background-color: #004466;
       color: white;
       padding: 10px;
+      font-size: 1.2rem;
       text-align: center;
       position: sticky;
       top: 0;
       z-index: 1000;
     }
+
+    #summary {
+      font-size: 0.9rem;
+      padding-top: 5px;
+      line-height: 1.6;
+    }
+
     #map {
       height: 65vh;
-      margin: 8px;
-      border-radius: 10px;
+      margin: 10px;
+      border-radius: 12px;
+      overflow: hidden;
     }
-    .controls {
+
+    .input-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
       padding: 10px;
     }
-    .point-block {
-      margin-bottom: 12px;
+
+    .input-box {
+      display: flex;
+      flex-direction: column;
     }
-    input[type="text"] {
-      width: 100%;
-      padding: 6px;
-      font-size: 1em;
+
+    .input-box input {
+      font-size: 1rem;
+      padding: 4px;
+    }
+
+    .input-box button {
       margin-top: 4px;
     }
+
     button {
       padding: 6px 12px;
-      margin-top: 6px;
-      font-size: 0.9em;
+      font-size: 0.95rem;
       border: none;
-      border-radius: 4px;
-      background: #003366;
+      background-color: #0077aa;
       color: white;
-      cursor: pointer;
+      border-radius: 5px;
     }
-    button:hover {
-      background: #005599;
-    }
-    .label {
-      background: rgba(255, 255, 255, 0.8);
-      padding: 4px 6px;
+
+    .label-text {
+      background: white;
+      padding: 3px 6px;
       border-radius: 4px;
-      font-size: 0.9em;
+      font-size: 0.8rem;
+      text-align: center;
+      transform: translate(-50%, -50%);
       pointer-events: none;
-    }
-    svg text {
-      fill: #003366;
-      font-weight: bold;
     }
   </style>
 </head>
 <body>
   <header>
-    <h2>マーク設置用アプリ</h2>
-    <div id="distance-info"></div>
-    <div id="bearing-info"></div>
+    マーク設置用アプリ
+    <div id="summary"></div>
   </header>
 
   <div id="map"></div>
 
-  <div class="controls">
-    <div class="point-block">
-      <label>上マーク（A）緯度, 経度</label>
-      <input id="inputA" type="text" placeholder="例: 35.123456, 135.123456" />
+  <div class="input-container">
+    <div class="input-box">
+      <label>上マーク（A）</label>
+      <input id="inputA" placeholder="例: 34.7615747, 135.5314288" />
       <button onclick="setPointFromInput(0)">登録</button>
     </div>
-    <div class="point-block">
-      <label>サイドマーク（B）緯度, 経度</label>
-      <input id="inputB" type="text" placeholder="例: 35.123456, 135.123456" />
+    <div class="input-box">
+      <label>サイドマーク（B）</label>
+      <input id="inputB" placeholder="例: 34.7600000, 135.5320000" />
       <button onclick="setPointFromInput(1)">登録</button>
     </div>
-    <div class="point-block">
-      <label>下マーク（C）緯度, 経度</label>
-      <input id="inputC" type="text" placeholder="例: 35.123456, 135.123456" />
+    <div class="input-box">
+      <label>下マーク（C）</label>
+      <input id="inputC" placeholder="例: 34.7590000, 135.5310000" />
       <button onclick="setPointFromInput(2)">登録</button>
     </div>
-    <button onclick="resetAll()">全体リセット</button>
+    <button onclick="resetAll()">まとめてリセット</button>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map").setView([35.0582072, 135.8801857], 16);
+    const map = L.map("map").setView([35.0582072, 135.8801857], 15);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
+      attribution: "© OpenStreetMap contributors",
     }).addTo(map);
 
-    const pointData = [null, null, null];
     const labels = ["上マーク", "サイドマーク", "下マーク"];
+    const points = [null, null, null];
     const markers = [];
-    const lines = [];
-    const angleLabels = [];
-    const nameLabels = [];
+    const labelDivs = [];
+    const angleTexts = [];
+    let lines = [];
 
     function toRad(deg) {
       return (deg * Math.PI) / 180;
@@ -118,8 +131,7 @@
       const φ1 = toRad(p1.lat), φ2 = toRad(p2.lat);
       const Δφ = toRad(p2.lat - p1.lat);
       const Δλ = toRad(p2.lng - p1.lng);
-      const a = Math.sin(Δφ / 2) ** 2 +
-                Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     }
@@ -130,107 +142,93 @@
       const λ1 = toRad(from.lng);
       const λ2 = toRad(to.lng);
       const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) -
-                Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+      const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2 - λ1);
       return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
 
-    function computeAngle(a, b, c) {
+    function calculateAngle(a, b, c) {
       const ab = haversine(a, b);
-      const ac = haversine(a, c);
       const bc = haversine(b, c);
-      const angleA = Math.acos((ab**2 + ac**2 - bc**2)/(2*ab*ac));
-      const angleB = Math.acos((ab**2 + bc**2 - ac**2)/(2*ab*bc));
-      const angleC = Math.PI - angleA - angleB;
-      return [toDeg(angleA), toDeg(angleB), toDeg(angleC)];
+      const ca = haversine(c, a);
+      const angle = Math.acos((ab**2 + ca**2 - bc**2) / (2 * ab * ca));
+      return toDeg(angle);
     }
 
     function updateMap() {
-      markers.forEach(m => map.removeLayer(m));
       lines.forEach(l => map.removeLayer(l));
-      angleLabels.forEach(l => map.removeLayer(l));
-      nameLabels.forEach(l => map.removeLayer(l));
-      markers.length = lines.length = angleLabels.length = nameLabels.length = 0;
+      lines = [];
 
-      pointData.forEach((p, i) => {
-        if (p) {
-          const marker = L.circleMarker(p, {
-            radius: 6,
-            color: "#003366",
-            fillColor: "#0055aa",
-            fillOpacity: 1
-          }).addTo(map);
-          markers.push(marker);
-
-          const offset = 0.0004;
-          const label = L.divIcon({
-            className: 'label',
-            html: `${labels[i]}`,
-            iconAnchor: [0, 0],
-          });
-          const labelMarker = L.marker([p.lat + offset, p.lng + offset], { icon: label }).addTo(map);
-          nameLabels.push(labelMarker);
-        }
+      markers.forEach((m, i) => {
+        if (m) map.removeLayer(m);
+        if (labelDivs[i]) map.removeLayer(labelDivs[i]);
+        if (angleTexts[i]) map.removeLayer(angleTexts[i]);
       });
 
-      if (pointData.every(p => p)) {
-        const [a, b, c] = pointData;
-        const segments = [[a,b], [b,c], [c,a]];
-        segments.forEach(seg => {
-          const line = L.polyline(seg, { color: "#003366", weight: 2 }).addTo(map);
-          lines.push(line);
-        });
+      for (let i = 0; i < 3; i++) {
+        if (!points[i]) continue;
+        markers[i] = L.marker(points[i]).addTo(map);
 
-        const angles = computeAngle(a, b, c);
-        const anglePoints = [a, b, c];
-        angles.forEach((angle, i) => {
-          const p = anglePoints[i];
-          const offset = 0.00025;
-          const label = L.divIcon({
-            className: 'label',
-            html: `${angle.toFixed(1)}°`,
-            iconAnchor: [0, 0],
+        // 名前ラベル
+        const label = L.divIcon({
+          className: 'label-text',
+          html: labels[i],
+        });
+        labelDivs[i] = L.marker([points[i].lat + 0.0002, points[i].lng + 0.0002], { icon: label, interactive: false }).addTo(map);
+      }
+
+      // 距離・角度
+      const A = points[0], B = points[1], C = points[2];
+      const summary = document.getElementById("summary");
+      summary.innerHTML = "";
+
+      if (A && C) {
+        const d = haversine(A, C) / 1000;
+        const angle = bearing(C, A);
+        summary.innerHTML = `上マーク → 下マーク<br>距離: ${d.toFixed(2)} km　方位角: ${angle.toFixed(2)}°`;
+        lines.push(L.polyline([A, C], { color: 'blue' }).addTo(map));
+      }
+
+      if (A && B) lines.push(L.polyline([A, B], { color: 'gray' }).addTo(map));
+      if (B && C) lines.push(L.polyline([B, C], { color: 'gray' }).addTo(map));
+
+      if (A && B && C) {
+        const angles = [
+          calculateAngle(C, A, B),
+          calculateAngle(A, B, C),
+          180 - calculateAngle(C, A, B) - calculateAngle(A, B, C)
+        ];
+
+        [A, B, C].forEach((p, i) => {
+          const txt = L.divIcon({
+            className: 'label-text',
+            html: `${labels[i]}<br>${angles[i].toFixed(1)}°`
           });
-          const angleMarker = L.marker([p.lat - offset, p.lng - offset], { icon: label }).addTo(map);
-          angleLabels.push(angleMarker);
+          angleTexts[i] = L.marker([p.lat - 0.00025, p.lng], { icon: txt, interactive: false }).addTo(map);
         });
-
-        const dist = haversine(c, a);
-        const brng = bearing(c, a);
-        document.getElementById("distance-info").textContent =
-          `距離（下→上）: ${(dist / 1000).toFixed(2)} km`;
-        document.getElementById("bearing-info").textContent =
-          `地球方位角: ${brng.toFixed(2)}°`;
-      } else {
-        document.getElementById("distance-info").textContent = "";
-        document.getElementById("bearing-info").textContent = "";
       }
     }
 
     function setPointFromInput(index) {
-      const inputId = ["inputA", "inputB", "inputC"][index];
-      const val = document.getElementById(inputId).value;
-      const match = val.match(/([-+]?[0-9]*\.?[0-9]+)[,\s]+([-+]?[0-9]*\.?[0-9]+)/);
-      if (match) {
-        const lat = parseFloat(match[1]);
-        const lng = parseFloat(match[2]);
-        pointData[index] = { lat, lng };
-        updateMap();
-      } else {
-        alert("正しい緯度経度を入力してください");
+      const value = document.getElementById(`input${"ABC"[index]}`).value.trim();
+      if (!value) return;
+      const [lat, lng] = value.split(",").map(Number);
+      if (isNaN(lat) || isNaN(lng)) {
+        alert("緯度・経度の形式が正しくありません");
+        return;
       }
+      points[index] = { lat, lng };
+      updateMap();
     }
 
     function resetAll() {
-      pointData.fill(null);
+      for (let i = 0; i < 3; i++) {
+        points[i] = null;
+        document.getElementById(`input${"ABC"[i]}`).value = "";
+      }
+      map.setView([35.0582072, 135.8801857], 15);
       updateMap();
-      map.setView([35.0582072, 135.8801857], 16);
-      document.getElementById("inputA").value = "";
-      document.getElementById("inputB").value = "";
-      document.getElementById("inputC").value = "";
     }
 
-    updateMap(); // 初期化
   </script>
 </body>
 </html>
