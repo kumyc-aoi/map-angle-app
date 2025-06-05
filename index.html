@@ -74,6 +74,7 @@
       text-align: center;
       transform: translate(-50%, -50%);
       pointer-events: none;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -111,11 +112,10 @@
       attribution: "© OpenStreetMap contributors",
     }).addTo(map);
 
-    const labels = ["上マーク", "サイドマーク", "下マーク"];
+    const labels = ["上", "サイド", "下"];
     const points = [null, null, null];
     const markers = [];
     const labelDivs = [];
-    const angleTexts = [];
     let lines = [];
 
     function toRad(deg) {
@@ -161,35 +161,27 @@
       markers.forEach((m, i) => {
         if (m) map.removeLayer(m);
         if (labelDivs[i]) map.removeLayer(labelDivs[i]);
-        if (angleTexts[i]) map.removeLayer(angleTexts[i]);
       });
 
       for (let i = 0; i < 3; i++) {
         if (!points[i]) continue;
         markers[i] = L.marker(points[i]).addTo(map);
-
-        // 名前ラベル
-        const label = L.divIcon({
-          className: 'label-text',
-          html: labels[i],
-        });
-        labelDivs[i] = L.marker([points[i].lat + 0.0002, points[i].lng + 0.0002], { icon: label, interactive: false }).addTo(map);
       }
 
-      // 距離・角度
       const A = points[0], B = points[1], C = points[2];
+
+      if (A && B) lines.push(L.polyline([A, B], { color: 'gray' }).addTo(map));
+      if (B && C) lines.push(L.polyline([B, C], { color: 'gray' }).addTo(map));
+      if (C && A) lines.push(L.polyline([C, A], { color: 'blue' }).addTo(map));
+
       const summary = document.getElementById("summary");
       summary.innerHTML = "";
 
       if (A && C) {
         const d = haversine(A, C) / 1000;
         const angle = bearing(C, A);
-        summary.innerHTML = `上マーク → 下マーク<br>距離: ${d.toFixed(2)} km　方位角: ${angle.toFixed(2)}°`;
-        lines.push(L.polyline([A, C], { color: 'blue' }).addTo(map));
+        summary.innerHTML = `上 → 下<br>距離: ${d.toFixed(2)} km　方位角: ${angle.toFixed(2)}°`;
       }
-
-      if (A && B) lines.push(L.polyline([A, B], { color: 'gray' }).addTo(map));
-      if (B && C) lines.push(L.polyline([B, C], { color: 'gray' }).addTo(map));
 
       if (A && B && C) {
         const angles = [
@@ -203,7 +195,7 @@
             className: 'label-text',
             html: `${labels[i]}<br>${angles[i].toFixed(1)}°`
           });
-          angleTexts[i] = L.marker([p.lat - 0.00025, p.lng], { icon: txt, interactive: false }).addTo(map);
+          labelDivs[i] = L.marker([p.lat - 0.00025, p.lng + 0.0003], { icon: txt, interactive: false }).addTo(map);
         });
       }
     }
